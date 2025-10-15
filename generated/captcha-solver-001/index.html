@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Captcha Solver</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="captcha-container">
+        <h2>Simple Captcha Solver</h2>
+        <canvas id="captchaCanvas" width="200" height="80" style="display:none;"></canvas>
+        <img id="captchaImage" alt="Captcha Image">
+        <input type="text" id="captchaInput" placeholder="Enter captcha here">
+        <button id="submitCaptcha">Submit</button>
+        <button id="newCaptcha">New Captcha</button>
+        <p id="feedback"></p>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
