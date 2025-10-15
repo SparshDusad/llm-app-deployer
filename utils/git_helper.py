@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import requests
 from utils.logger import get_logger
@@ -20,7 +21,7 @@ def enable_github_pages():
         resp = requests.post(url, json=data, auth=(GITHUB_USERNAME, GITHUB_TOKEN))
         if resp.status_code in (201, 202):
             logger.info("GitHub Pages enabled successfully.")
-        elif resp.status_code == 422:
+        elif resp.status_code == 409:
             logger.info("GitHub Pages already enabled.")
         else:
             logger.warning(f"Failed to enable GitHub Pages: {resp.status_code} {resp.text}")
@@ -29,20 +30,37 @@ def enable_github_pages():
 
 
 def git_commit_and_push(task_folder: str, commit_msg: str) -> str:
-    """Add, commit, and push generated app code to GitHub, then enable Pages."""
+    """
+    Add, commit, and push generated app code to GitHub.
+    Dynamically copies task_folder contents to repo root before commit.
+    """
+    repo_root = os.getcwd()  # Assume current working dir is repo root
+
     try:
-        # Stage changes
-        subprocess.run(["git", "add", task_folder], check=True)
+        # Copy all generated files from task_folder to repo root dynamically
+        for item in os.listdir(task_folder):
+            src = os.path.join(task_folder, item)
+            dest = os.path.join(repo_root, item)
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src, dest)
+
+        # Stage all changes
+        subprocess.run(["git", "add", "."], check=True)
+
         # Commit
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
-        # Add remote if not exists
+
+        # Add remote if it doesn't exist
         remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{REPO_NAME}.git"
         subprocess.run(["git", "remote", "add", "origin", remote_url], check=False)
-        # Push
+
+        # Push to main branch
         subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
+
         # Get latest commit SHA
         sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-
         logger.info(f"Git commit pushed with SHA: {sha}")
 
         # Enable GitHub Pages
