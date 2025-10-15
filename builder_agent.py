@@ -3,9 +3,10 @@ import re
 from pathlib import Path
 from utils.logger import get_logger
 import google.generativeai as genai
+from dotenv import load_dotenv
 
 logger = get_logger(__name__)
-
+load_dotenv()
 # --- Step 1: Configure the API Key ---
 try:
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
