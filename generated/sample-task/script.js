@@ -1,1 +1,1 @@
-// No JavaScript is required for this specific task, but an empty file is provided as requested.
+// No JavaScript is needed for this task.
