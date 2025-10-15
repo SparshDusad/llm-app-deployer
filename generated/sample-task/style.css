@@ -1,3 +1,14 @@
-.red-text {
-    color: red;
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin-top: 50px;
+}
+
+#main-title {
+    color: green; /* Changed from blue to green */
+}
+
+.subtitle {
+    color: #333;
+    font-size: 1.2em;
 }
