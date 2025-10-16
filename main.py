@@ -1,76 +1,67 @@
 import os
-from fastapi import FastAPI, Request
-from dotenv import load_dotenv
-
-from builder_agent import generate_app_code, update_app_code
+from fastapi import FastAPI, HTTPException
 from models import TaskRequest, APIResponse
-from utils.logger import get_logger
+from builder_agent import generate_app_code
+from utils.verifier import verify_secret
 from utils.git_helper import git_commit_and_push
 from utils.evaluator import notify_evaluator
-from utils.verifier import verify_secret
+from utils.logger import get_logger
+from dotenv import load_dotenv
+from pathlib import Path
 
-# ---------------------------------------------------
-# 🔹 Setup
-# ---------------------------------------------------
 load_dotenv()
 logger = get_logger(__name__)
+app = FastAPI()
 
+# Load environment variables once
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
 REPO_NAME = os.getenv("REPO_NAME", "llm-app-deployer")
 
-app = FastAPI(title="LLM App Deployer", version="1.0")
+
+def ensure_placeholder(task_folder: str):
+    """
+    If generated code is missing or invalid, add a placeholder page.
+    """
+    index_path = Path(task_folder) / "index.html"
+    if not index_path.exists() or index_path.read_text().strip() == "":
+        logger.warning(f"Adding placeholder index.html for {task_folder}")
+        index_path.write_text(
+            "<!DOCTYPE html><html><head><title>App Placeholder</title></head>"
+            "<body><h1>llm-app-deployer</h1><p>This site is open source. Improve this page.</p></body></html>"
+        )
+    # Ensure minimal CSS and JS exist
+    (Path(task_folder) / "style.css").write_text("/* Placeholder CSS */")
+    (Path(task_folder) / "script.js").write_text("// Placeholder JS")
 
 
-# ---------------------------------------------------
-# 🔹 Main API Endpoint
-# ---------------------------------------------------
 @app.post("/api-endpoint", response_model=APIResponse)
-async def handle_request(request: Request):
+async def handle_task(task_req: TaskRequest):
     """
-    Phase 1 (Build) and Phase 3 (Revise) unified handler.
-    - Verifies secret
-    - Generates or updates app
-    - Commits & pushes to GitHub
-    - Notifies evaluator
+    Full deployment: generate code, push to git, enable Pages, notify evaluator.
     """
-    try:
-        data = await request.json()
-        task_req = TaskRequest(**data)
-    except Exception as e:
-        logger.error(f"Invalid request payload: {e}")
-        return APIResponse(status="error", message="Invalid JSON structure")
+    logger.info(f"Received request for task '{task_req.task}', round {task_req.round}")
 
-    # --- Step 1: Verify Secret ---
     if not verify_secret(task_req.secret):
-        logger.warning(f"Unauthorized request for task '{task_req.task}'")
-        return APIResponse(status="error", message="Invalid secret key")
+        logger.warning(f"Invalid secret for task '{task_req.task}'")
+        raise HTTPException(status_code=403, detail="Invalid secret")
 
-    logger.info(f"✅ Received task '{task_req.task}' | Round {task_req.round}")
+    # Step 1: Generate app code
+    attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
+    task_folder = generate_app_code(task_req.task, task_req.brief, attachments_list)
+    if not task_folder:
+        task_folder = str(Path("generated") / task_req.task)
+        Path(task_folder).mkdir(parents=True, exist_ok=True)
 
-    # --- Step 2: Generate or Update App ---
+    ensure_placeholder(task_folder)
+
+    # Step 2: Git commit & push
     try:
-        if task_req.round == 1:
-            logger.info("🧠 Generating initial app (Round 1)...")
-            app_path = generate_app_code(task_req.task, task_req.brief, task_req.attachments)
-        else:
-            logger.info("🔁 Updating app (Round 2 or later)...")
-            app_path = update_app_code(task_req.task, task_req.brief, task_req.attachments)
+        commit_sha = git_commit_and_push(task_folder, f"Deploy {task_req.task} (Round {task_req.round})")
     except Exception as e:
-        logger.error(f"App generation error: {e}")
-        return APIResponse(status="error", message="App generation failed")
+        logger.exception("Git operation failed")
+        raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
 
-    if not app_path:
-        return APIResponse(status="error", message="No app files generated")
-
-    # --- Step 3: Git Commit & Push ---
-    try:
-        commit_message = f"Deploy {task_req.task} (Round {task_req.round})"
-        commit_sha = git_commit_and_push(app_path, commit_message)
-    except Exception as e:
-        logger.error(f"Git operation failed: {e}")
-        return APIResponse(status="error", message="Git commit/push failed")
-
-    # --- Step 4: Notify Evaluator ---
+    # Step 3: Notify evaluator
     try:
         notify_evaluator(
             email=task_req.email,
@@ -80,26 +71,31 @@ async def handle_request(request: Request):
             commit_sha=commit_sha,
             github_user=GITHUB_USERNAME,
             repo_name=REPO_NAME,
-            evaluation_url=str(task_req.evaluation_url),
+            evaluation_url=str(task_req.evaluation_url)
         )
     except Exception as e:
-        logger.error(f"Evaluator notification failed: {e}")
-        return APIResponse(status="warning", message="App deployed but evaluator not notified")
+        logger.exception("Evaluator notification failed")
+        raise HTTPException(status_code=500, detail=f"Evaluator notification failed: {e}")
 
-    # --- Step 5: Success Response ---
     pages_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/"
-    logger.info(f"🎉 Deployment complete for '{task_req.task}' → {pages_url}")
-
-    return APIResponse(
-        status="success",
-        message=f"Task '{task_req.task}' (Round {task_req.round}) deployed successfully. "
-                f"View your app at: {pages_url}"
-    )
+    logger.info(f"Task '{task_req.task}' deployed successfully to {pages_url}")
+    return APIResponse(status="success", message=f"Pages deployed successfully: {pages_url}")
 
 
-# ---------------------------------------------------
-# 🔹 Health Check (Optional)
-# ---------------------------------------------------
-@app.get("/")
-def health():
-    return {"status": "ok", "message": "LLM App Deployer is running 🚀"}
+@app.post("/build", response_model=APIResponse)
+async def build_app(task_req: TaskRequest):
+    """
+    Only generate code and ensure placeholders.
+    """
+    logger.info(f"Received build request for task '{task_req.task}'")
+    if not verify_secret(task_req.secret):
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
+    task_folder = generate_app_code(task_req.task, task_req.brief, attachments_list)
+    if not task_folder:
+        task_folder = str(Path("generated") / task_req.task)
+        Path(task_folder).mkdir(parents=True, exist_ok=True)
+
+    ensure_placeholder(task_folder)
+    return APIResponse(status="success", message=f"App generated successfully at {task_folder}")
