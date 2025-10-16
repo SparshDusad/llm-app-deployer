@@ -7,24 +7,13 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Image Compressor</h1>
-    <input type="file" id="imageInput" accept="image/*">
-
-    <div class="image-display">
-        <div class="image-box">
-            <h2>Original Image</h2>
-            <img id="originalImage" src="#" alt="Original" class="hidden">
-        </div>
-        <div class="image-box">
-            <h2>Compressed Image</h2>
-            <img id="compressedImage" src="#" alt="Compressed" class="hidden">
-            <a id="downloadLink" download="compressed_image.jpeg" class="hidden button">Download Compressed Image</a>
-        </div>
+    <div class="container">
+        <h1>Image Compressor</h1>
+        <input type="file" id="imageInput" accept="image/*">
+        <canvas id="imageCanvas"></canvas>
+        <button id="compressAndDownload" disabled>Compress & Download</button>
+        <a id="downloadLink" style="display: none;"></a>
     </div>
-
-    <!-- Canvas is used for processing but kept hidden -->
-    <canvas id="imageCanvas" class="hidden"></canvas>
-
     <script src="script.js"></script>
 </body>
 </html>
