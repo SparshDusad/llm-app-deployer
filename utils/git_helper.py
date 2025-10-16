@@ -12,6 +12,8 @@ GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 BRANCH = os.getenv("BRANCH", "main")
 
+MAIN_REPO = "llm-app-deployer"
+
 
 def create_license_file(repo_root: str):
     """Add MIT LICENSE if not present"""
@@ -33,51 +35,45 @@ def create_license_file(repo_root: str):
 
 def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     """
-    Add, commit, push generated code (Round 1 or 2) and ensure LICENSE/README.
+    Add, commit, and push generated code into /generated/<task> of main repo.
     Returns commit SHA.
     """
-    repo_root = os.getcwd()  # Assume current working dir is repo root
-    repo_name = task  # dynamic repo name
+    repo_root = os.getcwd()
+    dest_folder = Path(repo_root) / "generated" / task
+    dest_folder.parent.mkdir(parents=True, exist_ok=True)
 
-    # Copy all generated files (including README.md) to repo root
-    for item in os.listdir(task_folder):
-        src = os.path.join(task_folder, item)
-        dest = os.path.join(repo_root, item)
-        if os.path.isdir(src):
-            shutil.copytree(src, dest, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src, dest)
+    # Copy generated files into generated/<task> directory
+    if dest_folder.exists():
+        shutil.rmtree(dest_folder)
+    shutil.copytree(task_folder, dest_folder, dirs_exist_ok=True)
+    logger.info(f"📁 Copied generated files to {dest_folder}")
 
     # Ensure LICENSE exists
     create_license_file(repo_root)
 
-    # Stage all changes
+    # Stage, commit, and push changes
     subprocess.run(["git", "add", "."], check=True)
-
-    # Commit changes
     try:
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
     except subprocess.CalledProcessError:
         logger.info("⚠️ Nothing to commit. Skipping git commit.")
 
-    # Add remote if missing
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{repo_name}.git"
-    subprocess.run(["git", "remote", "add", "origin", remote_url], check=False)
+    # Always point to main repo
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
+    subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=False)
 
-    # Push to branch
+    # Push to main branch
     subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
 
-    # Get latest commit SHA
+    # Get commit SHA
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     logger.info(f"✅ Git commit pushed: {sha}")
 
     return sha
 
 
-def enable_github_pages(repo_name: str):
-    """Enable GitHub Pages for the repo and wait until built"""
-    import requests
-
+def enable_github_pages(repo_name: str = MAIN_REPO):
+    """Enable GitHub Pages for the main repo"""
     url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
     data = {"source": {"branch": BRANCH, "path": "/"}}
 
