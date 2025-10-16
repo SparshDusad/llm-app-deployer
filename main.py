@@ -67,14 +67,16 @@ async def handle_task(task_req: TaskRequest):
 
     # Step 3: Git commit & push
     try:
-        commit_sha = git_commit_and_push(task_folder, task_req.task, f"Deploy {task_req.task} (Round {task_req.round})")
+        commit_sha = git_commit_and_push(
+            task_folder, task_req.task, f"Deploy {task_req.task} (Round {task_req.round})"
+        )
     except Exception as e:
         logger.exception("❌ Git operation failed")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
 
-    # Step 4: Enable GitHub Pages (retry until active)
+    # Step 4: Enable GitHub Pages (pass repo_name)
     try:
-        enable_github_pages()
+        enable_github_pages(REPO_NAME)
         logger.info("🌐 Waiting for GitHub Pages to initialize...")
         time.sleep(10)  # give GitHub some time to process
     except Exception as e:
