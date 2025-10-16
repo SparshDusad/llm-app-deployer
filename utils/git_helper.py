@@ -1,9 +1,10 @@
 import os
 import shutil
 import subprocess
-import requests
 from pathlib import Path
 from utils.logger import get_logger
+import requests
+import time
 
 logger = get_logger(__name__)
 
@@ -30,40 +31,53 @@ def create_license_file(repo_root: str):
         logger.info("✅ MIT LICENSE created.")
 
 
-def create_readme(repo_root: str, task: str):
-    """Generate a complete README.md"""
-    readme_path = Path(repo_root) / "README.md"
-    if not readme_path.exists():
-        readme_content = f"""# {task}
+def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
+    """
+    Add, commit, push generated code (Round 1 or 2) and ensure LICENSE/README.
+    Returns commit SHA.
+    """
+    repo_root = os.getcwd()  # Assume current working dir is repo root
+    repo_name = task  # dynamic repo name
 
-## Summary
-This repository contains a minimal web app generated automatically by LLM App Deployer.
+    # Copy all generated files (including README.md) to repo root
+    for item in os.listdir(task_folder):
+        src = os.path.join(task_folder, item)
+        dest = os.path.join(repo_root, item)
+        if os.path.isdir(src):
+            shutil.copytree(src, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dest)
 
-## Setup
-1. Clone this repo: `git clone https://github.com/{GITHUB_USERNAME}/{task}.git`
-2. Install dependencies if any.
-3. Open `index.html` in browser.
+    # Ensure LICENSE exists
+    create_license_file(repo_root)
 
-## Usage
-- Navigate to `index.html`.
-- All JS/CSS is included locally.
-- Attachments are preloaded if provided in the task.
+    # Stage all changes
+    subprocess.run(["git", "add", "."], check=True)
 
-## Code Explanation
-- `index.html` – main HTML page
-- `style.css` – styles
-- `script.js` – frontend JS
-- `evaluation_payload.json` – payload sent to evaluator
+    # Commit changes
+    try:
+        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+    except subprocess.CalledProcessError:
+        logger.info("⚠️ Nothing to commit. Skipping git commit.")
 
-## License
-MIT License
-"""
-        readme_path.write_text(readme_content)
-        logger.info("✅ README.md generated.")
+    # Add remote if missing
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{repo_name}.git"
+    subprocess.run(["git", "remote", "add", "origin", remote_url], check=False)
+
+    # Push to branch
+    subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
+
+    # Get latest commit SHA
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    logger.info(f"✅ Git commit pushed: {sha}")
+
+    return sha
 
 
 def enable_github_pages(repo_name: str):
-    """Enable GitHub Pages and wait until built"""
+    """Enable GitHub Pages for the repo and wait until built"""
+    import requests
+
     url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
     data = {"source": {"branch": BRANCH, "path": "/"}}
 
@@ -75,11 +89,10 @@ def enable_github_pages(repo_name: str):
             logger.info("⚠️ GitHub Pages already enabled.")
         else:
             logger.warning(f"⚠️ Failed to enable Pages: {resp.status_code} {resp.text}")
-            return
 
-        # Poll Pages API until built
+        # Wait for Pages to build
         pages_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages/builds/latest"
-        for i in range(10):
+        for _ in range(10):
             r = requests.get(pages_url, auth=(GITHUB_USERNAME, GITHUB_TOKEN))
             if r.status_code == 200 and r.json().get("status") == "built":
                 logger.info("🌐 GitHub Pages is active.")
@@ -89,35 +102,3 @@ def enable_github_pages(repo_name: str):
         logger.warning("⚠️ GitHub Pages not fully built yet.")
     except Exception as e:
         logger.error(f"Exception enabling GitHub Pages: {e}")
-
-
-def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
-    """Add, commit, push generated code and ensure LICENSE/README"""
-    repo_root = os.getcwd()  # Assume current working dir is repo root
-    repo_name = f"{task}"  # dynamic repo name
-
-    # Copy generated files to repo root
-    for item in os.listdir(task_folder):
-        src = os.path.join(task_folder, item)
-        dest = os.path.join(repo_root, item)
-        if os.path.isdir(src):
-            shutil.copytree(src, dest, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src, dest)
-
-    # Create LICENSE and README
-    create_license_file(repo_root)
-    create_readme(repo_root, task)
-
-    # Git operations
-    subprocess.run(["git", "add", "."], check=True)
-    subprocess.run(["git", "commit", "-m", commit_msg], check=True)
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{repo_name}.git"
-    subprocess.run(["git", "remote", "add", "origin", remote_url], check=False)
-    subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
-
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    logger.info(f"✅ Git commit pushed: {sha}")
-
-    enable_github_pages(repo_name)
-    return sha

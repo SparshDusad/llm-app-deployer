@@ -4,6 +4,6 @@
   "round": 2,
   "nonce": "xyz789",
   "repo_url": "https://github.com/SparshDusad/llm-app-deployer",
-  "commit_sha": "757b3a0af5b05482a3f72022b4bafde15fef0666",
+  "commit_sha": "3c4865f86b96ce62084157c50e73ce1a73015602",
   "pages_url": "https://SparshDusad.github.io/llm-app-deployer/"
 }

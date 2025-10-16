@@ -55,12 +55,13 @@ async def handle_task(task_req: TaskRequest):
         logger.warning("❌ Invalid secret provided.")
         raise HTTPException(status_code=403, detail="Invalid secret")
 
-    # Step 2: Generate app code
+    # Step 2: Generate app code (builder_agent now returns a dict)
     attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
-    task_folder = generate_app_code(task_req.task, task_req.brief, attachments_list)
+    generated = generate_app_code(task_req.task, task_req.brief, attachments_list, round_num=task_req.round)
+    task_folder = str(Path("generated") / task_req.task)
 
-    if not task_folder:
-        task_folder = str(Path("generated") / task_req.task)
+    # Ensure folder exists & add placeholders if generation failed
+    if not generated or not Path(task_folder).exists():
         Path(task_folder).mkdir(parents=True, exist_ok=True)
 
     ensure_placeholder(task_folder)
@@ -118,10 +119,11 @@ async def build_app(task_req: TaskRequest):
         raise HTTPException(status_code=403, detail="Invalid secret")
 
     attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
-    task_folder = generate_app_code(task_req.task, task_req.brief, attachments_list)
+    generated = generate_app_code(task_req.task, task_req.brief, attachments_list, round_num=task_req.round)
+    task_folder = str(Path("generated") / task_req.task)
 
-    if not task_folder:
-        task_folder = str(Path("generated") / task_req.task)
+    # Ensure folder exists & add placeholders if generation failed
+    if not generated or not Path(task_folder).exists():
         Path(task_folder).mkdir(parents=True, exist_ok=True)
 
     ensure_placeholder(task_folder)
