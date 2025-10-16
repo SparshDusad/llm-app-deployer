@@ -38,31 +38,36 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     Add, commit, and push generated code into /generated/<task> of main repo.
     Returns commit SHA.
     """
-    repo_root = os.getcwd()
-    dest_folder = Path(repo_root) / "generated" / task
-    dest_folder.parent.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(os.getcwd())
+    dest_folder = repo_root / "generated" / task
 
-    # Copy generated files into generated/<task> directory
-    if dest_folder.exists():
-        shutil.rmtree(dest_folder)
-    shutil.copytree(task_folder, dest_folder, dirs_exist_ok=True)
+    # Ensure destination folder exists
+    dest_folder.mkdir(parents=True, exist_ok=True)
+
+    # Copy all files from generated/<task> from LLM to this folder
+    for item in os.listdir(task_folder):
+        src = Path(task_folder) / item
+        dest = dest_folder / item
+        if src.is_dir():
+            shutil.copytree(src, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dest)
+
     logger.info(f"📁 Copied generated files to {dest_folder}")
 
     # Ensure LICENSE exists
-    create_license_file(repo_root)
+    create_license_file(str(repo_root))
 
-    # Stage, commit, and push changes
+    # Stage, commit, and push
     subprocess.run(["git", "add", "."], check=True)
     try:
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
     except subprocess.CalledProcessError:
         logger.info("⚠️ Nothing to commit. Skipping git commit.")
 
-    # Always point to main repo
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/llm-app-deployer.git"
     subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=False)
 
-    # Push to main branch
     subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
 
     # Get commit SHA
@@ -70,6 +75,7 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     logger.info(f"✅ Git commit pushed: {sha}")
 
     return sha
+
 
 
 def enable_github_pages(repo_name: str = MAIN_REPO):
