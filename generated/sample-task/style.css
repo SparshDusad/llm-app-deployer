@@ -1,26 +1,132 @@
+/* Basic Reset & Body Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f7f6; /* Light grey-green */
+    color: #333;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    margin: 0;
-    background-color: #f0f8ff; /* Light initial background */
-    color: #333;
-    transition: background-color 0.5s ease, color 0.5s ease;
-    cursor: pointer; /* Indicates the body is clickable */
+    padding: 20px;
 }
 
-body.dark-theme {
-    background-color: #2c3e50; /* Darker background */
-    color: #ecf0f1; /* Lighter text */
-}
-
-#quote-display {
-    font-size: 2.5em;
+/* Container for the whole app */
+.container {
+    background-color: #ffffff;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     text-align: center;
+    max-width: 600px;
+    width: 100%;
+}
+
+h1 {
+    color: #2c3e50; /* Dark blue-grey */
+    margin-bottom: 30px;
+    font-size: 2.5em;
+    font-weight: 700;
+}
+
+/* Quote Box Styling */
+.quote-box {
+    background-color: #ecf0f1; /* Lighter grey */
     padding: 30px;
-    max-width: 800px;
-    line-height: 1.4;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    min-height: 150px; /* Ensure a minimum height for visual consistency */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.quote-text {
+    font-size: 1.6em;
+    line-height: 1.6;
+    margin-bottom: 15px;
     font-style: italic;
+    color: #34495e; /* Medium blue-grey */
+}
+
+.quote-author {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #7f8c8d; /* Muted grey */
+    align-self: flex-end; /* Align author to the right */
+    margin-top: 10px;
+}
+
+/* Button Styling */
+#newQuoteBtn {
+    background-color: #3498db; /* Bright blue */
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 5px;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    outline: none;
+}
+
+#newQuoteBtn:hover {
+    background-color: #2980b9; /* Darker blue on hover */
+    transform: translateY(-2px);
+}
+
+#newQuoteBtn:active {
+    transform: translateY(0);
+}
+
+#newQuoteBtn:disabled {
+    background-color: #95a5a6; /* Grey out when disabled */
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding: 30px;
+    }
+    h1 {
+        font-size: 2em;
+    }
+    .quote-text {
+        font-size: 1.3em;
+    }
+    .quote-author {
+        font-size: 1em;
+    }
+    #newQuoteBtn {
+        padding: 12px 25px;
+        font-size: 1.1em;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 20px;
+    }
+    h1 {
+        font-size: 1.8em;
+    }
+    .quote-text {
+        font-size: 1.1em;
+    }
+    .quote-author {
+        font-size: 0.9em;
+    }
+    #newQuoteBtn {
+        padding: 10px 20px;
+        font-size: 1em;
+    }
 }
