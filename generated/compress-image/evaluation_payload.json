@@ -1,0 +1,9 @@
+{
+  "email": "sparsh@example.com",
+  "task": "compress-image",
+  "round": 1,
+  "nonce": "abc123",
+  "repo_url": "https://github.com/SparshDusad/llm-app-deployer",
+  "commit_sha": "3566ed5c5d9d8ad0e0706870e00d00301df44c5f",
+  "pages_url": "https://SparshDusad.github.io/llm-app-deployer/"
+}
