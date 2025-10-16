@@ -1,0 +1,9 @@
+{
+  "email": "sparsh@example.com",
+  "task": "sample",
+  "round": 1,
+  "nonce": "abc123",
+  "repo_url": "https://github.com/SparshDusad/llm-app-deployer",
+  "commit_sha": "621999b0bb15cfa4839b8740ce9e3a35b802a0bc",
+  "pages_url": "https://SparshDusad.github.io/llm-app-deployer/"
+}
