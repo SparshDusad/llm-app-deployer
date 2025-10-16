@@ -88,3 +88,68 @@ def generate_app_code(task: str, brief: str, attachments: list = None) -> str:
 
     logger.info(f"Generated files at: {output_dir.resolve()}")
     return str(output_dir.resolve())
+
+def update_app_code(task: str, brief: str, attachments: list = None) -> str:
+    """
+    Update an existing generated app using Gemini based on a new brief.
+    This function modifies the existing files rather than creating new ones.
+    """
+    from pathlib import Path
+
+    output_dir = Path("generated") / task
+    if not output_dir.exists():
+        raise FileNotFoundError(f"No existing app found for task '{task}'. Run build first.")
+
+    logger.info(f"Updating existing app for task: {task} with new brief.")
+
+    # Prepare attachments info
+    attachments = attachments or []
+    attachment_info = "\n".join([f"{a['name']}: {a['url']}" for a in attachments])
+
+    # Prepare the update prompt
+    prompt = f"""
+    You are a senior frontend engineer reviewing an existing web app.
+    Task: {task}
+    New Brief: {brief}
+    Attachments: {attachment_info if attachment_info else 'None'}
+
+    The folder contains index.html, style.css, and script.js.
+    Based on the new brief, suggest and apply appropriate code-level modifications 
+    to update UI, text, logic, or behavior.
+    
+    Your response MUST contain exactly three updated code blocks:
+    - ```html for the full updated HTML
+    - ```css for the full updated CSS
+    - ```js for the full updated JS
+    """
+
+    try:
+        config = genai.GenerationConfig(temperature=0.3)
+        response = model.generate_content(prompt, generation_config=config)
+        code_text = response.text
+    except Exception as e:
+        logger.error(f"Failed to generate updated code with Gemini: {e}")
+        return ""
+
+    # Extract updated code
+    def extract_code(text, lang):
+        import re
+        pattern = f"```{lang}\\s*(.*?)```"
+        match = re.search(pattern, text, re.DOTALL)
+        return match.group(1).strip() if match else ""
+
+    html_code = extract_code(code_text, "html") or "<!-- Update failed -->"
+    css_code = extract_code(code_text, "css") or "/* Update failed */"
+    js_code = extract_code(code_text, "js") or "// Update failed"
+
+    # Write the updated files
+    (output_dir / "index.html").write_text(html_code)
+    (output_dir / "style.css").write_text(css_code)
+    (output_dir / "script.js").write_text(js_code)
+
+    # Log the update
+    with open(output_dir / "update_log.txt", "a", encoding="utf-8") as f:
+        f.write(f"Applied revision for round update: {brief}\n")
+
+    logger.info(f"App successfully updated at: {output_dir.resolve()}")
+    return str(output_dir.resolve())
