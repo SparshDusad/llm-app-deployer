@@ -63,16 +63,26 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
         run_cmd(["git", "remote", "add", "origin", remote_url], cwd=repo_root)
 
     # --- FIX ---
-    # Forcefully add the specified folder. This will add new/modified files
-    # even if the folder is listed in .gitignore.
+    # 1. Explicitly switch to the target branch to avoid detached HEAD issues.
+    logger.info(f"Switching to branch: {BRANCH}")
+    run_cmd(["git", "checkout", BRANCH], cwd=repo_root, check=False) # Use check=False in case branch doesn't exist yet
+    run_cmd(["git", "pull", "origin", BRANCH], cwd=repo_root, check=False) # Sync with remote
+
+    # 2. Forcefully add the specified folder.
     logger.info(f"Forcefully adding folder to git: {task_folder}")
     run_cmd(["git", "add", "-f", task_folder], cwd=repo_root)
 
-    # Commit the changes. Using --allow-empty ensures a commit is made
-    # which can be useful for triggering deployments even if file content is the same.
+    # 3. Commit the changes.
     logger.info(f"Committing with message: '{commit_msg}'")
-    run_cmd(["git", "commit", "--allow-empty", "-m", commit_msg], cwd=repo_root)
+    # Check status; if nothing to commit, we can skip.
+    status_result = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
+    if not status_result.stdout:
+         logger.warning("⚠️ No new file changes to commit. Creating an empty commit to trigger deployment.")
+         run_cmd(["git", "commit", "--allow-empty", "-m", commit_msg], cwd=repo_root)
+    else:
+        run_cmd(["git", "commit", "-m", commit_msg], cwd=repo_root)
     
+    # 4. Push the commit.
     logger.info(f"Pushing to origin/{BRANCH}...")
     run_cmd(["git", "push", "origin", BRANCH], cwd=repo_root)
 
