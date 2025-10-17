@@ -44,10 +44,13 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     # Ensure destination folder exists
     dest_folder.mkdir(parents=True, exist_ok=True)
 
-    # Copy all files from generated/<task> from LLM to this folder
+    # Copy files safely (skip if same path)
     for item in os.listdir(task_folder):
         src = Path(task_folder) / item
         dest = dest_folder / item
+        if src.resolve() == dest.resolve():
+            logger.info(f"⚠️ Skipping {src}, source and destination are the same.")
+            continue
         if src.is_dir():
             shutil.copytree(src, dest, dirs_exist_ok=True)
         else:
@@ -58,24 +61,30 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     # Ensure LICENSE exists
     create_license_file(str(repo_root))
 
-    # Stage, commit, and push
+    # Stage all changes
     subprocess.run(["git", "add", "."], check=True)
+
+    # Commit changes
     try:
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
     except subprocess.CalledProcessError:
         logger.info("⚠️ Nothing to commit. Skipping git commit.")
 
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/llm-app-deployer.git"
+    # Set correct remote URL
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
     subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=False)
 
+    # Push
     subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
 
     # Get commit SHA
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    sha = (
+        subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+        .stdout.strip()
+    )
     logger.info(f"✅ Git commit pushed: {sha}")
 
     return sha
-
 
 
 def enable_github_pages(repo_name: str = MAIN_REPO):
