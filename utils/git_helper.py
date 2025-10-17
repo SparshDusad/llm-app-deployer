@@ -15,6 +15,12 @@ BRANCH = os.getenv("BRANCH", "main")
 MAIN_REPO = "llm-app-deployer"
 
 
+def run_cmd(cmd, check=True):
+    """Run shell command with logging"""
+    logger.info(f"$ {' '.join(cmd)}")
+    return subprocess.run(cmd, check=check, capture_output=True, text=True)
+
+
 def create_license_file(repo_root: str):
     """Add MIT LICENSE if not present"""
     license_path = Path(repo_root) / "LICENSE"
@@ -33,6 +39,16 @@ def create_license_file(repo_root: str):
         logger.info("✅ MIT LICENSE created.")
 
 
+def ensure_git_identity():
+    """Ensure git user.name and user.email are set (needed in Render)"""
+    try:
+        run_cmd(["git", "config", "user.email"], check=False)
+    except Exception:
+        run_cmd(["git", "config", "--global", "user.email", f"{GITHUB_USERNAME}@users.noreply.github.com"])
+        run_cmd(["git", "config", "--global", "user.name", GITHUB_USERNAME])
+        logger.info("✅ Git identity configured.")
+
+
 def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     """
     Add, commit, and push generated code into /generated/<task> of main repo.
@@ -44,7 +60,7 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     # Ensure destination folder exists
     dest_folder.mkdir(parents=True, exist_ok=True)
 
-    # Copy files safely (skip if same path)
+    # Copy files safely
     for item in os.listdir(task_folder):
         src = Path(task_folder) / item
         dest = dest_folder / item
@@ -61,29 +77,33 @@ def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     # Ensure LICENSE exists
     create_license_file(str(repo_root))
 
-    # Stage all changes
-    subprocess.run(["git", "add", "."], check=True)
+    # Ensure git identity
+    ensure_git_identity()
 
-    # Commit changes
+    # Ensure remote is configured
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
+    existing_remotes = subprocess.run(["git", "remote"], capture_output=True, text=True).stdout.split()
+    if "origin" not in existing_remotes:
+        run_cmd(["git", "remote", "add", "origin", remote_url], check=False)
+    else:
+        run_cmd(["git", "remote", "set-url", "origin", remote_url], check=False)
+
+    # Stage, commit, and push
+    run_cmd(["git", "add", "."], check=True)
     try:
-        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+        run_cmd(["git", "commit", "-m", commit_msg], check=True)
     except subprocess.CalledProcessError:
         logger.info("⚠️ Nothing to commit. Skipping git commit.")
 
-    # Set correct remote URL
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
-    subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=False)
+    # Pull first (avoid non-fast-forward errors)
+    run_cmd(["git", "pull", "origin", BRANCH, "--rebase"], check=False)
 
-    # Push
-    subprocess.run(["git", "push", "--set-upstream", "origin", BRANCH], check=True)
+    # Push changes
+    run_cmd(["git", "push", "origin", BRANCH], check=True)
 
     # Get commit SHA
-    sha = (
-        subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
-        .stdout.strip()
-    )
+    sha = run_cmd(["git", "rev-parse", "HEAD"], check=True).stdout.strip()
     logger.info(f"✅ Git commit pushed: {sha}")
-
     return sha
 
 
