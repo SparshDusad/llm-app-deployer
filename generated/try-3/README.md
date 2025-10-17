@@ -1,19 +1,32 @@
-# Image Compressor
+# Image Compressor with Motivational Quotes
 
-A minimal web page that allows you to compress images directly in your browser. No server-side processing is required.
-
-## How to Use
-
-1.  **Save the files:** Save the HTML content as `index.html`, the CSS as `style.css`, and the JavaScript as `script.js` in the same folder.
-2.  **Open in browser:** Open the `index.html` file using your web browser (e.g., Chrome, Firefox, Edge).
-3.  **Select an image:** Click the "Choose File" button and select an image file (JPEG, PNG, etc.) from your computer.
-4.  **Adjust quality:** Use the "Quality" slider to set the desired compression level. A value of `1.0` means no compression (original quality), while `0.1` means high compression.
-5.  **Download:** The compressed image will be displayed below, along with its new size. Click "Download Compressed Image" to save it to your device.
+This is a simple web application that combines an image compression tool with a motivational quote display. Users can upload an image, adjust its compression quality, and download the optimized version, all while being inspired by random quotes.
 
 ## Features
 
-*   **Client-side compression:** All processing happens in your browser, ensuring privacy and no server load.
-*   **Adjustable quality:** Fine-tune the compression level to balance file size and visual quality.
-*   **Size comparison:** See the original and compressed file sizes.
-*   **Direct download:** Easily save the compressed image.
-*   **Minimalistic design:** Focuses on core functionality with a clean interface.
+*   **Image Compression:**
+    *   Upload an image file (JPEG, PNG, etc.).
+    *   Displays the original image and its file size.
+    *   Provides a live preview of the compressed image and its new file size.
+    *   Adjust compression quality using a slider (JPEG compression).
+    *   Download the compressed image.
+*   **Motivational Quotes:**
+    *   Displays a random motivational quote on page load.
+    *   Includes the author of the quote.
+    *   A "Get New Quote" button to fetch another random quote.
+
+## How to Run
+
+1.  **Save the files:**
+    *   Save the HTML code into a file named `index.html`.
+    *   Save the CSS code into a file named `style.css` in the same directory as `index.html`.
+    *   Save the JavaScript code into a file named `script.js` in the same directory as `index.html`.
+2.  **Open in browser:**
+    *   Open `index.html` in your web browser.
+
+## Technologies Used
+
+*   **HTML5:** For structuring the web page content.
+*   **CSS3:** For styling the application and making it responsive.
+*   **JavaScript (ES6+):** For handling image processing (using Canvas API), fetching quotes from an external API, and managing user interactions.
+*   **Quotable API (`https://api.quotable.io/random`):** Used to fetch random motivational quotes.
