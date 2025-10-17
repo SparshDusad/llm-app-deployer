@@ -16,27 +16,7 @@ app = FastAPI(title="LLM App Deployer", version="2.0")
 
 # Load environment variables
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 REPO_NAME = os.getenv("REPO_NAME", "llm-app-deployer")
-BRANCH = os.getenv("BRANCH", "main")
-
-
-def ensure_placeholder(task_folder: str):
-    """
-    If generated code is missing or invalid, add a placeholder page.
-    Ensures that GitHub Pages always renders something instead of 404.
-    """
-    index_path = Path(task_folder) / "index.html"
-    if not index_path.exists() or index_path.read_text().strip() == "":
-        logger.warning(f"Adding placeholder index.html for {task_folder}")
-        index_path.write_text(
-            "<!DOCTYPE html><html><head><title>App Placeholder</title>"
-            "<meta charset='utf-8' /><style>body{font-family:sans-serif;text-align:center;padding:50px;}</style></head>"
-            "<body><h1>🚧 App Build Pending</h1><p>Your app was deployed successfully but is still generating content.</p></body></html>"
-        )
-    (Path(task_folder) / "style.css").write_text("/* Placeholder CSS */")
-    (Path(task_folder) / "script.js").write_text("// Placeholder JS")
-
 
 @app.post("/api-endpoint", response_model=APIResponse)
 async def handle_task(task_req: TaskRequest):
@@ -46,7 +26,7 @@ async def handle_task(task_req: TaskRequest):
     2. Generate app code
     3. Commit & push to GitHub
     4. Enable GitHub Pages
-    5. Notify evaluator
+    5. Notify evaluator with the correct URL
     """
     logger.info(f"🚀 Received request for task '{task_req.task}' (Round {task_req.round})")
 
@@ -55,17 +35,11 @@ async def handle_task(task_req: TaskRequest):
         logger.warning("❌ Invalid secret provided.")
         raise HTTPException(status_code=403, detail="Invalid secret")
 
-    # Step 2: Generate app code (builder_agent now returns a dict)
+    # Step 2: Generate app code
     attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
-    generated = generate_app_code(task_req.task, task_req.brief, attachments_list, round_num=task_req.round)
     task_folder = str(Path("generated") / task_req.task)
-
-    # Ensure folder exists & add placeholders if generation failed
-    if not generated or not Path(task_folder).exists():
-        Path(task_folder).mkdir(parents=True, exist_ok=True)
-
-    ensure_placeholder(task_folder)
-
+    generate_app_code(task_req.task, task_req.brief, attachments_list)
+    
     # Step 3: Git commit & push
     try:
         commit_sha = git_commit_and_push(
@@ -75,15 +49,18 @@ async def handle_task(task_req: TaskRequest):
         logger.exception("❌ Git operation failed")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
 
-    # Step 4: Enable GitHub Pages (pass repo_name)
+    # Step 4: Enable GitHub Pages
     try:
         enable_github_pages(REPO_NAME)
-        logger.info("🌐 Waiting for GitHub Pages to initialize...")
-        time.sleep(10)  # give GitHub some time to process
     except Exception as e:
         logger.warning(f"⚠️ GitHub Pages enabling encountered an issue: {e}")
 
-    # Step 5: Notify evaluator
+    # --- THE FIX IS HERE ---
+    # Step 5: Construct the correct, specific URL to the generated app
+    pages_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/generated/{task_req.task}/"
+    logger.info(f"✅ Constructed correct Pages URL: {pages_url}")
+    
+    # Step 6: Notify evaluator with the correct URL
     try:
         notify_evaluator(
             email=task_req.email,
@@ -94,39 +71,17 @@ async def handle_task(task_req: TaskRequest):
             github_user=GITHUB_USERNAME,
             repo_name=REPO_NAME,
             evaluation_url=str(task_req.evaluation_url),
+            pages_url=pages_url  # Pass the correct URL
         )
     except Exception as e:
         logger.exception("❌ Evaluator notification failed")
         raise HTTPException(status_code=500, detail=f"Evaluator notification failed: {e}")
 
-    pages_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/"
-    logger.info(f"✅ Task '{task_req.task}' deployed successfully to {pages_url}")
+    logger.info(f"✅ Task '{task_req.task}' deployed successfully.")
 
+    # Step 7: Return the correct URL in the final response
     return APIResponse(
         status="success",
-        message=f"✅ App deployed successfully and sent for evaluation.\nView it here: {pages_url}",
+        message=f"✅ App deployed successfully. View it here: {pages_url}",
     )
 
-
-@app.post("/build", response_model=APIResponse)
-async def build_app(task_req: TaskRequest):
-    """
-    Only generates code locally (no Git or evaluation step).
-    """
-    logger.info(f"🧩 Build-only mode for task '{task_req.task}'")
-
-    if not verify_secret(task_req.secret):
-        raise HTTPException(status_code=403, detail="Invalid secret")
-
-    attachments_list = [a.dict() for a in task_req.attachments] if task_req.attachments else []
-    generated = generate_app_code(task_req.task, task_req.brief, attachments_list, round_num=task_req.round)
-    task_folder = str(Path("generated") / task_req.task)
-
-    # Ensure folder exists & add placeholders if generation failed
-    if not generated or not Path(task_folder).exists():
-        Path(task_folder).mkdir(parents=True, exist_ok=True)
-
-    ensure_placeholder(task_folder)
-
-    logger.info(f"✅ App generated successfully at {task_folder}")
-    return APIResponse(status="success", message=f"App generated successfully at {task_folder}")

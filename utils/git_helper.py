@@ -8,151 +8,109 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Environment variables
+# Load environment variables
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 BRANCH = os.getenv("BRANCH", "main")
-
-MAIN_REPO = "llm-app-deployer"
-
-
-# --------------------------- Utility ---------------------------
-
-def run_cmd(cmd, check=True):
-    """Run a shell command and log output."""
-    logger.info(f"$ {' '.join(cmd)}")
-    return subprocess.run(cmd, check=check, capture_output=True, text=True)
+REPO_NAME = os.getenv("REPO_NAME", "llm-app-deployer")
 
 
-def create_license_file(repo_root: str):
-    """Ensure an MIT LICENSE file exists."""
-    license_path = Path(repo_root) / "LICENSE"
-    if not license_path.exists():
-        mit_text = (
-            "MIT License\n\n"
-            "Permission is hereby granted, free of charge, to any person obtaining a copy "
-            "of this software and associated documentation files (the \"Software\"), to deal "
-            "in the Software without restriction, including without limitation the rights "
-            "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell "
-            "copies of the Software, and to permit persons to whom the Software is "
-            "furnished to do so, subject to the following conditions:\n\n"
-            "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED."
-        )
-        license_path.write_text(mit_text)
-        logger.info("✅ MIT LICENSE created.")
-
-
-def ensure_git_identity():
-    """Ensure Git identity is configured (needed on Render)."""
+def run_cmd(cmd, check=True, cwd=None):
+    """Run a shell command, log it, and return its output."""
+    logger.info(f"Executing command: {' '.join(cmd)}")
     try:
-        existing_email = run_cmd(["git", "config", "user.email"], check=False).stdout.strip()
-        existing_name = run_cmd(["git", "config", "user.name"], check=False).stdout.strip()
-        if not existing_email or not existing_name:
-            raise Exception("Missing git identity")
-    except Exception:
-        run_cmd(["git", "config", "--global", "user.email", f"{GITHUB_USERNAME}@users.noreply.github.com"])
-        run_cmd(["git", "config", "--global", "user.name", GITHUB_USERNAME])
-        logger.info("✅ Git identity configured.")
+        result = subprocess.run(
+            cmd,
+            check=check,
+            capture_output=True,
+            text=True,
+            cwd=cwd
+        )
+        if result.stdout:
+            logger.info(result.stdout)
+        if result.stderr:
+            logger.warning(result.stderr)
+        return result
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {' '.join(e.cmd)}")
+        logger.error(f"Stderr: {e.stderr}")
+        logger.error(f"Stdout: {e.stdout}")
+        raise
 
 
-# --------------------------- Core Logic ---------------------------
+def ensure_git_identity(repo_root):
+    """Ensure Git user.name and user.email are configured for the repo."""
+    logger.info("Configuring git user details...")
+    run_cmd(["git", "config", "user.name", GITHUB_USERNAME], cwd=repo_root)
+    run_cmd(["git", "config", "user.email", f"{GITHUB_USERNAME}@users.noreply.github.com"], cwd=repo_root)
+
 
 def git_commit_and_push(task_folder: str, task: str, commit_msg: str) -> str:
     """
-    Add, commit, and push generated code into /generated/<task> of main repo.
-    Returns commit SHA.
+    Adds, commits, and pushes a specific folder to a GitHub repository.
+    This function is safe to run multiple times.
+
+    Returns:
+        str: The SHA of the new commit.
     """
-    repo_root = Path(os.getcwd())
-    dest_folder = repo_root / "generated" / task
-    src_folder = Path(task_folder).resolve()
+    repo_root = os.getcwd()
+    
+    ensure_git_identity(repo_root)
 
-    # Copy files only if source is different
-    if src_folder != dest_folder.resolve():
-        dest_folder.mkdir(parents=True, exist_ok=True)
-        for item in os.listdir(src_folder):
-            src = src_folder / item
-            dest = dest_folder / item
-            if src.is_dir():
-                shutil.copytree(src, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dest)
-        logger.info(f"📁 Copied new files from {src_folder} → {dest_folder}")
+    # Set or Update the Remote URL (Idempotent)
+    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{REPO_NAME}.git"
+    remotes = run_cmd(["git", "remote"], cwd=repo_root).stdout.splitlines()
+
+    if "origin" in remotes:
+        logger.info("Remote 'origin' already exists. Setting URL.")
+        run_cmd(["git", "remote", "set-url", "origin", remote_url], cwd=repo_root)
     else:
-        logger.warning("⚠️ Source and destination are the same — skipping copy.")
+        logger.info("Remote 'origin' not found. Adding it.")
+        run_cmd(["git", "remote", "add", "origin", remote_url], cwd=repo_root)
 
-    # Ensure LICENSE exists
-    create_license_file(str(repo_root))
+    # Add, Commit, and Push
+    logger.info(f"Adding folder to git: {task_folder}")
+    # Use -f to force add if it's in .gitignore
+    run_cmd(["git", "add", "-f", task_folder], cwd=repo_root)
+    
+    # Check for changes before committing
+    status_result = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)
+    if not status_result.stdout:
+        logger.warning("⚠️ No changes to commit. Skipping commit and push.")
+        return run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+        
+    logger.info(f"Committing with message: '{commit_msg}'")
+    run_cmd(["git", "commit", "-m", commit_msg], cwd=repo_root)
+    
+    logger.info(f"Pushing to origin/{BRANCH}...")
+    run_cmd(["git", "push", "origin", BRANCH], cwd=repo_root)
 
-    # Ensure Git identity
-    ensure_git_identity()
+    # Get the Commit SHA
+    sha = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
 
-    # Setup remote
-    remote_url = f"https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{GITHUB_USERNAME}/{MAIN_REPO}.git"
-    existing_remotes = subprocess.run(["git", "remote"], capture_output=True, text=True).stdout.split()
-    if "origin" not in existing_remotes:
-        run_cmd(["git", "remote", "add", "origin", remote_url], check=False)
-    else:
-        run_cmd(["git", "remote", "set-url", "origin", remote_url], check=False)
-
-    # Stage only the generated folder
-    run_cmd(["git", "add", "generated/"], check=True)
-    try:
-        run_cmd(["git", "commit", "-m", commit_msg], check=True)
-    except subprocess.CalledProcessError:
-        logger.info("⚠️ Nothing to commit. Skipping commit.")
-
-    # Rebase + push
-    run_cmd(["git", "pull", "origin", BRANCH, "--rebase"], check=False)
-    run_cmd(["git", "push", "origin", BRANCH], check=True)
-
-    # Commit SHA
-    sha = run_cmd(["git", "rev-parse", "HEAD"], check=True).stdout.strip()
-    logger.info(f"✅ Git commit pushed: {sha}")
+    logger.info(f"✅ Successfully pushed commit with SHA: {sha}")
     return sha
 
 
-# --------------------------- GitHub Pages ---------------------------
-
-def enable_github_pages(repo_name: str = MAIN_REPO):
+def enable_github_pages(repo_name: str):
     """Enable GitHub Pages for the main repo."""
     url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
     data = {"source": {"branch": BRANCH, "path": "/"}}
 
-    try:
-        resp = requests.post(url, json=data, auth=(GITHUB_USERNAME, GITHUB_TOKEN))
-        if resp.status_code in (201, 202):
-            logger.info("✅ GitHub Pages enabled successfully.")
-        elif resp.status_code == 409:
-            logger.info("⚠️ GitHub Pages already enabled.")
-        else:
-            logger.warning(f"⚠️ Failed to enable Pages: {resp.status_code} {resp.text}")
+    logger.info("Attempting to enable GitHub Pages...")
+    response = requests.post(url, headers=headers, json=data)
 
-        # Wait for Pages build
-        pages_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/pages/builds/latest"
-        for _ in range(10):
-            r = requests.get(pages_url, auth=(GITHUB_USERNAME, GITHUB_TOKEN))
-            if r.status_code == 200 and r.json().get("status") == "built":
-                logger.info("🌐 GitHub Pages is active.")
-                return
-            logger.info("⏳ Waiting for Pages to build...")
-            time.sleep(5)
-        logger.warning("⚠️ GitHub Pages not fully built yet.")
-    except Exception as e:
-        logger.error(f"Exception enabling GitHub Pages: {e}")
+    if response.status_code == 201:
+        logger.info("✅ GitHub Pages enabled successfully.")
+    elif response.status_code == 409:
+        logger.info("⚠️ GitHub Pages was already enabled.")
+    else:
+        logger.error(f"❌ Failed to enable GitHub Pages: {response.status_code} - {response.text}")
+        # Even if it fails, don't crash the whole process
+    
+    # It takes time for the pages to build, this is just an initial trigger
 
-
-# --------------------------- Auto Commit Helper ---------------------------
-
-def auto_commit_after_api(generated_path: str, task: str, round_num: int):
-    """
-    Automatically commit after each API generation.
-    """
-    try:
-        commit_message = f"Deploy {task} (Round {round_num}) | Auto-commit"
-        sha = git_commit_and_push(generated_path, task, commit_message)
-        enable_github_pages()
-        logger.info(f"✅ Auto commit done for task {task}, commit: {sha}")
-        return sha
-    except Exception as e:
-        logger.error(f"❌ Auto commit failed for task {task}: {e}")
-        return None
