@@ -14,23 +14,18 @@ def notify_evaluator(
     commit_sha: str,
     github_user: str,
     repo_name: str,
-    evaluation_url: str
+    evaluation_url: str,
+    pages_url: str  # This parameter was missing
 ) -> dict:
     """
-    Notify the evaluator (instructors) that a deployment is ready for evaluation.
+    Notify the evaluator that a deployment is ready for evaluation.
     
-    Sends:
-        - GitHub repo URL
-        - Pages URL
-        - commit SHA
-        - round, task, nonce, email
-    
-    Also writes `evaluation_payload.json` locally for audit/debugging.
+    Now accepts a specific pages_url to ensure the correct link is sent.
     """
 
-    pages_url = f"https://{github_user}.github.io/{repo_name}/"
     repo_url = f"https://github.com/{github_user}/{repo_name}"
 
+    # The payload now uses the pages_url passed directly into the function.
     payload = {
         "email": email,
         "task": task,
@@ -71,3 +66,4 @@ def notify_evaluator(
         raise RuntimeError("Failed to notify evaluator after multiple attempts.")
 
     return payload
+
